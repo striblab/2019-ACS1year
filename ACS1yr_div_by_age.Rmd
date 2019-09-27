@@ -1,0 +1,146 @@
+---
+title: "ACS1_div_by_age"
+author: "MaryJoWebster"
+date: "September 18, 2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, warning =FALSE, message=FALSE)
+```
+
+```{r}
+library(tidycensus)
+library(tidyverse)
+library(janitor)
+library(stringr)
+library(scales)
+library(ggthemes)
+library(leaflet)
+library(sf)
+library(stringr)
+library(rmarkdown)
+library(knitr)
+library(reshape2)
+library(DT)
+library(kableExtra)
+library(aws.s3)
+library(htmltools)
+
+census_api_key(Sys.getenv("CENSUS_API_KEY"))
+
+
+acs_variable_list <- load_variables(2017, "acs1", cache = TRUE)
+
+B1001_vars <- acs_variable_list %>%
+  filter(str_detect(name, "^B01001_") | str_detect(name, "^B01001B") | str_detect(name, "^B01001C") |
+           str_detect(name, "^B01001D") | str_detect(name, "^B01001F") |str_detect(name, "^B01001G") |
+           str_detect(name, "^B01001H") | str_detect(name, "^B01001I")) %>%
+  pull(name)
+
+
+
+years <- lst( 2014, 2015, 2016, 2017, 2018)
+
+metro_sex_by_age <-  map_dfr(
+  years,
+  ~ get_acs(
+    geography = "metropolitan statistical area/micropolitan statistical area",
+    variables = B1001_vars,
+    year = .x,
+    survey = "acs1"
+  ),
+  .id = "year"
+) %>% clean_names() %>% filter(geoid=='33460')
+
+metro_sex_by_age <-  left_join(metro_sex_by_age, acs_variable_list %>% select(name, label), by=c("variable"="name")) %>% 
+  mutate(label=case_when(label=='Estimate!!Total'~ 'Total', TRUE ~str_sub(label,18,255)))
+
+metro_sex_by_age <-  metro_sex_by_age %>% mutate(gender = case_when(str_sub(label,1,3)=='Tot'~'Total',
+                                                                    str_sub(label,1,3)=='Fem'~'Female',
+                                                                    str_sub(label,1,3)=='Mal'~'Male'))
+
+metro_sex_by_age <-  metro_sex_by_age %>% mutate(agegroup = case_when(grepl("Under 5", label) ~ '0 to 9',
+                                                                      grepl("5 to 9", label)~'0 to 9',
+                                                                      grepl("10 to 14", label)~'10 to 17',
+                                                                      grepl("15 to 17", label)~'10 to 17',
+                                                                      grepl("18 and", label)~'18 to 24',
+                                                                      grepl("20", label)~'18 to 24',
+                                                                      grepl("21", label)~'18 to 24',
+                                                                      grepl("20 to 24", label)~'18 to 24',
+                                                                      grepl("22 to 24", label)~'18 to 24',
+                                                                      grepl("25 to", label)~'25 to 34',
+                                                                      grepl("30 to", label)~'25 to 34',
+                                                                      grepl("35 to", label)~'35 to 44',
+                                                                      grepl("40 to", label)~'35 to 44',
+                                                                      grepl("45 to", label)~'45 to 54',
+                                                                      grepl("50 to",label)~'45 to 54',
+                                                                      grepl("55 to", label)~'55 to 64',
+                                                                      grepl("60 and", label)~'55 to 64',
+                                                                      grepl("62 to", label)~'55 to 64',
+                                                                      grepl("65 to", label)~'65 to 74',
+                                                                      grepl("65 and", label)~'65 to 74',
+                                                                      grepl("70 to", label)~'65 to 74',
+                                                                      grepl("67 to", label)~'65 to 74',
+                                                                      grepl("75 to", label)~'75 to 84',
+                                                                      grepl("80 to", label)~'75 to 84',
+                                                                      grepl("85 years",label)~'85 and up',
+                                                                      TRUE~'Total') )
+
+metro_sex_by_age <-  metro_sex_by_age %>% mutate(racialgroup = case_when(str_sub(variable,1,7)=='B01001B'~'Black',
+                                                                         str_sub(variable,1,7)=='B01001C'~'Am Indian',
+                                                                         str_sub(variable,1,7)=='B01001D'~'Asian',
+                                                                         str_sub(variable,1,7)=='B01001E'~ 'Pac Isl',
+                                                                         str_sub(variable,1,7)=='B01001F'~'Other',
+                                                                         str_sub(variable,1,7)=='B01001G' ~'Multi',
+                                                                         str_sub(variable,1,7)=='B01001H'~ 'White-NonHispanic',
+                                                                         str_sub(variable,1,7)=='B01001I'~'Hispanic',
+                                                                         str_sub(variable,1,7)=='B01001_'~'Total'))
+
+metro_sex_by_age <-  metro_sex_by_age %>% mutate(largegroup = case_when(racialgroup=='White-NonHispanic'~'White',
+                                                                        racialgroup=='Total'~'Total',
+                                                                        TRUE~'People of color'))
+
+
+
+metro_sex_by_age_2 <-  metro_sex_by_age %>%filter(label!='Total', largegroup!='Total') %>%  group_by(gender, agegroup, racialgroup, largegroup) %>% summarise(est=sum(estimate))
+
+metro_sex_by_age_3 <- metro_sex_by_age_2 %>% group_by(agegroup, largegroup) %>% summarise(esti = sum(est))
+
+metro_sex_by_age_3 <- pivot_wider(metro_sex_by_age_3, names_from = largegroup, values_from=esti) %>% clean_names() %>% mutate(pct_white = white/(white+people_of_color), pct_color = people_of_color/(white+people_of_color))
+
+```
+
+```{r}
+gdata <-  metro_sex_by_age_3 %>% filter(agegroup!='Total', year=='2018') %>% select(agegroup, pct_color, pct_white) %>% mutate(pct_color=round(pct_color,2), pct_white=round(pct_white,2))
+
+library(reshape2)
+
+gdata <-  melt(gdata, id.vars="agegroup")
+
+gdata$variable <-  factor(gdata$variable, levels=c("pct_white", "pct_color"), labels=c("White", "People of Color"))
+
+fill <-  c("#5F9EA0", "#E1B378")
+my_x_label <- "Age Groups"
+my_y_label <-  "Percent"
+
+g1 <-  ggplot() + 
+  geom_bar(aes(y=value, x=agegroup, fill=variable), data=gdata, stat="identity") + 
+  theme(legend.position="bottom", legend.direction="horizontal", legend.title=element_blank())+
+  #scale_x_continuous(name=my_x_label)+
+  scale_y_continuous(name="Percent", limits=c(0, 1), labels=percent)+
+  scale_fill_manual(values=fill)+
+  theme_hc()+
+      labs(title = "Metro diversity by age group", 
+       subtitle = "2018",
+       caption = "Graphic by MaryJo Webster")
+
+plot(g1)
+```
+
+```{r}
+ggsave('diversity_by_age.jpg', width=8, height=5, units="in", dpi="print")
+
+
+```
+

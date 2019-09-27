@@ -1,0 +1,284 @@
+---
+title: "ACS1yr - Homeownership & costs"
+author: "MaryJo Webster"
+date:  "Last updated: `r Sys.Date()`"
+output:
+  html_document: 
+    toc: true
+    to_depth: 1
+    toc_float: true
+    theme: flatly
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE)
+
+#http://strib-data-public.s3-us-west-1.amazonaws.com/projects/census/ACS1yr_housing.html
+```
+
+```{r}
+library(tidycensus)
+library(tidyverse)
+library(readxl)
+library(janitor)
+library(scales)
+library(ggthemes)
+library(leaflet)
+library(sf)
+library(stringr)
+library(rmarkdown)
+library(knitr)
+library(reshape2)
+library(DT)
+library(kableExtra)
+library(aws.s3)
+library(htmltools)
+
+
+census_api_key(Sys.getenv("CENSUS_API_KEY"))
+
+#acs_variable_list <- load_variables(2017, "acs1", cache = TRUE)
+#write.csv(acs_variable_list, 'acs_variable_list_2017.csv', row.names = FALSE)
+
+my_variables2 <-  c(grossrent_pctincome = "B25071_001",
+                    ownercosts_pctincome = "B25092_001")
+
+my_variables <-  c(housingunits = "B25003_001",
+                   owner_units = "B25003_002",
+                   renter_units = "B25003_003",
+                   blk_housingunits ="B25003B_001",
+                   blk_owner ="B25003B_002",
+                   blk_renter ="B25003B_003",
+                   indian_housingunits ="B25003C_001",
+                   indian_owner ="B25003C_002",
+                   indian_renter ="B25003C_003",
+                   asian_housingunits ="B25003D_001",
+                   asian_owner ="B25003D_002",
+                   asian_renter ="B25003D_003",
+                   other_housingunits ="B25003F_001",
+                   other_owner ="B25003F_002",
+                   other_renter ="B25003F_003",
+                   mul_housingunits ="B25003G_001",
+                   mul_owner ="B25003G_002",
+                   mul_renter ="B25003G_003",
+                   wnh_housingunits ="B25003H_001",
+                   wnh_owner ="B25003H_002",
+                   wnh_renter ="B25003H_003",
+                   his_housingunits ="B25003I_001",
+                   his_owner ="B25003I_002",
+                   his_renter ="B25003I_003")
+
+years <- lst(2012, 2013, 2014, 2015, 2016, 2017, 2018)
+
+#metro7counties
+metro7counties <-  c("27003", "27019", "27037", "27053", "27123", "27139", "27163")
+
+
+
+county_tenure <-  map_dfr(
+  years,
+  ~ get_acs(
+    geography = "county",
+    variables = my_variables,
+    state="MN",
+    year = .x,
+    survey = "acs1"
+    ),
+  .id = "year"
+  ) %>% clean_names() %>% mutate(moe_pct = (moe/estimate)*100,
+                                 lower= estimate-moe,
+                                 upper=estimate+moe,
+                                 group = case_when(str_sub(variable,1,3) %in% c("blk", "asi", "ind", "oth", "mul", "his") ~ 'color',
+                                                   str_sub(variable,1,3)=='wnh'~'white',
+                                                   TRUE~'all'),
+                                 metric = case_when(grepl("housingunits", variable)~'housing units',
+                                                    grepl("renter", variable)~'renter',
+                                                    grepl("owner", variable)~'owner'))
+
+
+
+county_tenure$estimate[is.na(county_tenure$estimate)] <-  0
+county_tenure$lower[is.na(county_tenure$lower)] <-  0
+county_tenure$upper[is.na(county_tenure$upper)] <-  0
+  
+
+
+
+metro_tenure <-  county_tenure %>% filter(geoid %in% metro7counties)
+
+stlouis_tenure <-  county_tenure %>% filter(geoid =="27137")
+
+
+
+state_tenure <-  map_dfr(
+  years,
+  ~ get_acs(
+    geography = "state",
+    variables = my_variables,
+    state="MN",
+    year = .x,
+    survey = "acs1"
+    ),
+  .id = "year"
+  ) %>% clean_names() %>% mutate(moe_pct = (moe/estimate)*100,
+                                 lower= estimate-moe,
+                                 upper=estimate+moe,
+                                 group = case_when(str_sub(variable,1,3) %in% c("blk", "asi", "ind", "oth", "mul", "his") ~ 'color',
+                                                   str_sub(variable,1,3)=='wnh'~'white',
+                                                   TRUE~'all'),
+                                 metric = case_when(grepl("housingunits", variable)~'housing units',
+                                                    grepl("renter", variable)~'renter',
+                                                    grepl("owner", variable)~'owner'))
+
+state_tenure$estimate[is.na(state_tenure$estimate)] <-  0
+state_tenure$lower[is.na(state_tenure$lower)] <-  0
+state_tenure$upper[is.na(state_tenure$upper)] <-  0
+
+county_costs <-  map_dfr(
+  years,
+  ~ get_acs(
+    geography = "county",
+    variables = my_variables2,
+    state="MN",
+    year = .x,
+    survey = "acs1"
+    ),
+  .id = "year"
+  ) %>% clean_names()
+
+metro_costs <-  county_costs %>% filter(geoid %in% metro7counties)
+
+stlouis_costs <-  county_costs %>% filter(geoid =="27137")
+
+
+```
+
+#7 county metro- Homeownership
+```{r}
+
+metro_tenure_all <-  metro_tenure %>% filter(group=='all') %>% group_by(year,  metric) %>% summarize(est=sum(estimate))
+
+pivot_wider(metro_tenure_all, names_from = metric, values_from = est) %>% mutate(pctown = round((owner/`housing units`),3))%>%  knitr::kable("html") %>% 
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"), full_width = F, position="left")
+```
+
+#Pct homeownership by county
+
+```{r}
+metro_tenure_bycounty <-  metro_tenure %>% filter(group=='all') %>% select(name, year, metric, estimate)
+
+metro_tenure_bycounty <- pivot_wider(metro_tenure_bycounty, names_from = metric, values_from = estimate) %>% mutate(pctown = round((owner/`housing units`),3)) %>% select(year, name, pctown)%>%arrange(name, year) 
+
+pivot_wider(metro_tenure_bycounty, names_from= year, values_from=pctown)%>%   knitr::kable("html") %>% 
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"), full_width = F, position="left")
+```
+
+#Homeownership for people of color, entire metro
+```{r}
+
+metro_tenure_color <-  metro_tenure %>% filter(group=='color') %>% group_by(year,  metric) %>% summarize(est=sum(estimate))
+
+
+metro_tenure_color <- pivot_wider(metro_tenure_color, names_from = metric, values_from = est) %>% mutate(pctown = round((owner/`housing units`),3)) %>% select(year, pctown)
+
+metro_tenure_color%>%   knitr::kable("html") %>% 
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"), full_width = F, position="left")
+```
+#Homeownership for white, entire metro
+```{r}
+metro_tenure_white<-  metro_tenure %>% filter(group=='white') %>% group_by(year,  metric) %>% summarize(est=sum(estimate))
+
+
+metro_tenure_white <- pivot_wider(metro_tenure_white, names_from = metric, values_from = est) %>% mutate(pctown = round((owner/`housing units`),3)) %>% select(year, pctown)
+
+metro_tenure_white%>%   knitr::kable("html") %>% 
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"), full_width = F, position="left")
+```
+
+#Ownership people of color, by county
+```{r}
+metro_tenure_bycounty_color <-  metro_tenure %>% filter(group=='color') %>% group_by(name, year, metric) %>% summarize(est= sum(estimate))
+
+pivot_wider(metro_tenure_bycounty_color, names_from = metric, values_from = est) %>% mutate(pctown = round((owner/`housing units`),3)) %>% select(name, year, pctown) %>% arrange(name, year)%>%   knitr::kable("html") %>% 
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"), full_width = F, position="left")
+```
+
+#Gross rent as percent of income, by county
+```{r}
+metro_costs %>% filter(variable=='grossrent_pctincome') %>% select(year, name, estimate, moe) %>% arrange(name, year)%>%   knitr::kable("html") %>% 
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"), full_width = F, position="left")
+```
+
+#Owner costs as percent of income, by county
+```{r}
+metro_costs %>% filter(variable=='ownercosts_pctincome') %>% select(year, name, estimate, moe) %>% arrange(name, year)%>%   knitr::kable("html") %>% 
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"), full_width = F, position="left")
+```
+
+#St. Louis county, gross rent as pct of income
+```{r}
+stlouis_costs %>% filter(variable=='grossrent_pctincome') %>% select(year, name, estimate, moe) %>% arrange(name, year)%>%   knitr::kable("html") %>% 
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"), full_width = F, position="left")
+```
+
+#St louis county, homeownership by people of color
+```{r}
+stlouis_tenure_color <-  stlouis_tenure %>% filter(group=='color') %>% group_by(year,  metric) %>% summarize(est=sum(estimate))
+
+pivot_wider(stlouis_tenure_color, names_from = metric, values_from = est) %>% mutate(pctown = round((owner/`housing units`),3))%>%   knitr::kable("html") %>% 
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"), full_width = F, position="left")
+```
+
+#St Louis county, homeownership by whites
+```{r}
+stlouis_tenure_white<-  stlouis_tenure %>% filter(group=='white') %>% group_by(year,  metric) %>% summarize(est=sum(estimate))
+
+pivot_wider(stlouis_tenure_white, names_from = metric, values_from = est) %>% mutate(pctown = round((owner/`housing units`),3))%>%   knitr::kable("html") %>% 
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"), full_width = F, position="left")
+```
+
+#Statewide - overall home ownership
+```{r}
+state_tenure2 <-  state_tenure%>% filter(group=='all') %>% select(year, metric, estimate)
+
+pivot_wider(state_tenure2, names_from = metric, values_from = estimate) %>% mutate(pctown = round((owner/`housing units`),3)) %>% arrange(year)%>%   knitr::kable("html") %>% 
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"), full_width = F, position="left")
+```
+
+#statewide - ownership among people of color
+```{r}
+state_tenure_color <-  state_tenure %>% filter(group=='color') %>% group_by(name, year, metric) %>% summarize(est= sum(estimate))
+
+pivot_wider(state_tenure_color, names_from = metric, values_from = est) %>% mutate(pctown = round((owner/`housing units`),3)) %>% arrange(name, year)%>%   knitr::kable("html") %>% 
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"), full_width = F, position="left")
+```
+
+#Statewide - ownership among whites
+```{r}
+state_tenure_white <-  state_tenure %>% filter(group=='white') %>% group_by(name, year, metric) %>% summarize(est= sum(estimate))
+
+pivot_wider(state_tenure_white, names_from = metric, values_from = est) %>% mutate(pctown = round((owner/`housing units`),3)) %>% arrange(name, year)%>%   knitr::kable("html") %>% 
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"), full_width = F, position="left")
+```
+
+
+
+```{r movetoS3, echo=FALSE, eval=FALSE, results="hide"}
+
+
+
+
+Sys.setenv("AWS_ACCESS_KEY_ID" =  rstudioapi::askForPassword("AWS_ACCESS_KEY_ID"),
+
+           "AWS_SECRET_ACCESS_KEY" = rstudioapi::askForPassword("AWS_SECRET_ACCESS_KEY"))
+		   
+		   get_bucket("strib-data-public")
+
+
+put_object(file = "ACS1yr_housing.html", object = "projects/census/ACS1yr_housing.html", bucket = "strib-data-public")
+
+put_object(file = "ACS1yr_housing.html", object = "projects/census/ACS1yr_housing.html", bucket = "strib-data-public", acl=c("public-read"))
+
+
+
+```

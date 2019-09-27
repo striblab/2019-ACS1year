@@ -1,0 +1,122 @@
+---
+title: "ACS1yr_mobility"
+author: "MaryJoWebster"
+date: "September 16, 2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(tidycensus)
+library(tidyverse)
+library(readxl)
+library(janitor)
+library(scales)
+library(ggthemes)
+library(leaflet)
+library(sf)
+library(stringr)
+library(rmarkdown)
+library(knitr)
+library(reshape2)
+library(DT)
+library(kableExtra)
+
+census_api_key(Sys.getenv("CENSUS_API_KEY"))
+
+my_variables <-  c(totpop = "B07001_001",
+                            samehouse  = "B07001_017",
+                            samecounty = "B07001_033",
+                            diffcounty = "B07001_049",
+                            diffstate = "B07001_065",
+                            abroad = "B07001_081"
+                            )
+
+years <-  lst(2012, 2013, 2014, 2015, 2016, 2017, 2018)
+
+mobility_state <-  map_dfr(
+  years,
+  ~ get_acs(
+    geography = "state",
+    variables = my_variables,
+    state="MN",
+    year = .x,
+    survey = "acs1"
+    ),
+  .id = "year"
+  )%>% clean_names()
+
+
+
+mobility_metro<-  map_dfr(
+  years,
+  ~ get_acs(
+    geography = "metropolitan statistical area/micropolitan statistical area",
+    variables = my_variables,
+    year = .x,
+    survey = "acs1"
+    ),
+  .id = "year"
+  )%>% clean_names()
+
+
+
+mobility <-  bind_rows(mobility_state, mobility_metro %>% filter(geoid=='33460'))
+
+
+
+mobility_wide <-  mobility %>% filter(name=='Minnesota') %>%  select(year, variable, estimate, -name, -geoid, -moe)
+
+
+
+```
+
+#State of Minnesota, mobility rates
+```{r}
+pivot_wider(mobility %>% filter(geoid=='27') %>% select(year, name, variable, estimate), names_from = variable, values_from=estimate)%>% mutate(pctdiffstate = round((diffstate/totpop)*100,1),
+       pctabroad = round((abroad/totpop)*100,1),
+       pctdiffcounty = round((diffcounty/totpop)*100,1),
+       pctsamecounty = round((samecounty/totpop)*100,1),
+       pctsamehouse = round((samehouse/totpop)*100,1)) %>% 
+  select(year, name, pctdiffstate, pctabroad, pctdiffcounty, pctsamecounty, pctsamehouse)
+```
+
+
+```{r}
+pivot_wider(mobility %>% filter(geoid=='27') %>% select(year, name, variable, estimate), names_from = variable, values_from=estimate)
+```
+
+
+
+#Metro area, mobility rates
+```{r}
+
+
+ pivot_wider(mobility %>% filter(geoid=='33460') %>% select(year, name, variable, estimate), names_from = variable, values_from=estimate)%>% mutate(pctdiffstate = round((diffstate/totpop)*100,1),
+       pctabroad = round((abroad/totpop)*100,1),
+       pctdiffcounty = round((diffcounty/totpop)*100,1),
+       pctsamecounty = round((samecounty/totpop)*100,1),
+       pctsamehouse = round((samehouse/totpop)*100,1)) %>% 
+  select(year, pctdiffstate, pctabroad, pctdiffcounty, pctsamecounty, pctsamehouse)
+
+
+ pivot_wider(mobility %>% filter(geoid=='33460') %>% select(year, name, variable, estimate), names_from = variable, values_from=estimate)
+
+```
+
+#Compare metros
+```{r}
+metros_mobility <-  pivot_wider(mobility_metro %>% filter(grepl("Metro Area", name), estimate!='NA', year=='2017')%>% select(year, name, variable, estimate), names_from = variable, values_from=estimate)%>% mutate(pctdiffstate = round((diffstate/totpop)*100,1),
+       pctabroad = round((abroad/totpop)*100,1),
+       pctdiffcounty = round((diffcounty/totpop)*100,1),
+       pctsamecounty = round((samecounty/totpop)*100,1),
+       pctsamehouse = round((samehouse/totpop)*100,1)) %>% 
+  select(year, name, pctdiffstate, pctabroad, pctdiffcounty, pctsamecounty, pctsamehouse) %>% 
+  arrange(desc(pctdiffstate))
+
+datatable(metros_mobility)
+```
+

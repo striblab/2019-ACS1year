@@ -1,0 +1,430 @@
+---
+title: "ACS1yr: Diversity"
+author: "MaryJo Webster"
+date:  "Last updated: `r Sys.Date()`"
+output:
+  html_document: 
+    toc: true
+    to_depth: 1
+    toc_float: true
+    theme: flatly
+---
+
+```{r setup, include=FALSE, message=FALSE, warning=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+
+#http://strib-data-public.s3-us-west-1.amazonaws.com/projects/census/ACS1yr_diversity.html
+
+```
+
+```{r, warning=FALSE, message=FALSE}
+library(tidycensus)
+library(tidyverse)
+library(readxl)
+library(janitor)
+library(scales)
+library(ggthemes)
+library(leaflet)
+library(sf)
+library(stringr)
+library(rmarkdown)
+library(knitr)
+library(reshape2)
+library(DT)
+library(aws.s3)
+library(kableExtra)
+
+currentyr <- 'x2017'
+
+#this only gets the state of MN and the Twin Cities metro area (as defined by feds)
+#it's not possible to download all the metro areas in one swoop unless you use the API
+
+
+
+#this is code for pulling in files from data.census.gov 
+#need to download table B03002 for state of MN and Twin Cities metro and rename csv to B03002.csv
+
+#B03002_1 <- read_csv('./2018files/B03002.csv', skip=2, col_names=FALSE, col_types=c(X3='i', X4='i') ) %>% select(geoid=X1, name=X2, estimate=X3, moe=X4) %>% mutate(variable = 'totpop', year='2018')
+
+#B03002_2 <- read_csv('./2018files/B03002.csv', skip=2, col_names=FALSE, col_types=c(X5='i', X6='i') ) %>% select(geoid=X1, name=X2, estimate=X5, moe=X6) %>% mutate(variable = 'nothispanic', year='2018')
+
+#B03002_3 <- read_csv('./2018files/B03002.csv', skip=2, col_names=FALSE, col_types=c(X7='i', X8='i') ) %>% select(geoid=X1, name=X2, estimate=X7, moe=X8) %>% mutate(variable = 'nh_whitealone', year='2018')
+
+#B03002_4 <- read_csv('./2018files/B03002.csv', skip=2, col_names=FALSE, col_types=c(X9='i', X10='i') ) %>% select(geoid=X1, name=X2, estimate=X9, moe=X10) %>% mutate(variable = 'nh_black', year='2018')
+
+#B03002_5 <- read_csv('./2018files/B03002.csv', skip=2, col_names=FALSE, col_types=c(X11='i', X12='i') ) %>% select(geoid=X1, name=X2, estimate=X11, moe=X12) %>% mutate(variable = 'nh_indian', year='2018')
+
+#B03002_6 <- read_csv('./2018files/B03002.csv', skip=2, col_names=FALSE, col_types=c(X13='i', X14='i') ) %>% select(geoid=X1, name=X2, estimate=X13, moe=X14) %>% mutate(variable = 'nh_asian', year='2018')
+
+#B03002_7 <- read_csv('./2018files/B03002.csv', skip=2, col_names=FALSE, col_types=c(X15='i', X16='i') ) %>% select(geoid=X1, name=X2, estimate=X15, moe=X16) %>% mutate(variable = 'nh_pacisl', year='2018')
+
+#B03002_8 <- read_csv('./2018files/B03002.csv', skip=2, col_names=FALSE, col_types=c(X17='i', X18='i') ) %>% select(geoid=X1, name=X2, estimate=X17, moe=X18) %>% mutate(variable = 'nh_other', year='2018')
+
+#B03002_9 <- read_csv('./2018files/B03002.csv', skip=2, col_names=FALSE, col_types=c(X19='i', X20='i') ) %>% select(geoid=X1, name=X2, estimate=X19, moe=X20) %>% mutate(variable = 'nh_multi', year='2018')
+
+#B03002_10 <- read_csv('./2018files/B03002.csv', skip=2, col_names=FALSE, col_types=c(X25='i', X26='i') ) %>% select(geoid=X1, name=X2, estimate=X25, moe=X26) %>% mutate(variable = 'hispanic', year='2018')
+
+#bind together each chunk
+#B03002 <-  bind_rows(B03002_1,B03002_2, B03002_3, B03002_4, B03002_5, B03002_6, B03002_7, B03002_8, B03002_9, B03002_10)
+
+#remove the dataframes no longer needed
+#rm(B03002_1,B03002_2,B03002_3,B03002_4,B03002_5,B03002_6,B03002_7,B03002_8,B03002_9,B03002_10)
+
+#---------
+
+#the first time you use your API key, you need to enter it here 
+#this will load it into your REnviron file
+    #census_api_key("put your key here", install=TRUE)
+
+#then on subsequent uses, you can just use this code
+    census_api_key(Sys.getenv("CENSUS_API_KEY"))
+
+#this will generate a list of the tables and variables
+#this particular code is asking for the 2017 5-year American community survey data
+#it's storing it in a new data frame and then I've set it to write out to csv
+
+    #acs_variable_list <- load_variables(2017, "acs5", cache = TRUE)
+    #write.csv(acs_variable_list, 'acs_variable_list_2017.csv', row.names = FALSE)
+
+#set variables for first set of tables    
+    my_variables <-  c(totpop = "B03002_001",
+                            nothispanic = "B03002_002",
+                            nh_whitealone = "B03002_003",
+                            nh_black = "B03002_004",
+                            nh_indian = "B03002_005",
+                            nh_asian = "B03002_006",
+                            nh_pacisl = "B03002_007",
+                            nh_other = "B03002_008",
+                            nh_multi = "B03002_009",
+                            hispanic = "B03002_012")
+  
+
+
+#Set the years I want returned
+years <- lst( 2012, 2013, 2014, 2015, 2016, 2017, 2018)
+
+#metro7counties
+metro7counties <-  c("27003", "27019", "27037", "27053", "27123", "27139", "27163")
+
+#This loops through and pulls the same data for all the years and variables noted above
+#for state of MN only
+state_diversity <-  map_dfr(
+  years,
+  ~ get_acs(
+    geography = "state",
+    variables = my_variables,
+    state = "MN",
+    year = .x,
+    survey = "acs1"
+    ),
+  .id = "year"
+  ) %>% clean_names()
+
+
+county_diversity <-  map_dfr(
+  years,
+  ~ get_acs(
+    geography = "county",
+    variables = my_variables,
+    state = "MN",
+    year = .x,
+    survey = "acs1"
+    ),
+  .id = "year"
+  ) %>% clean_names()
+
+#this loops through and pulls metro areas, then filters to just MSP
+#note the code for pulling states is different than that for metros
+metro_diversity <-  map_dfr(
+  years,
+  ~ get_acs(
+    geography = "metropolitan statistical area/micropolitan statistical area",
+    variables = my_variables,
+    year = .x,
+    survey = "acs1"
+    ),
+  .id = "year"
+  ) %>% clean_names() %>% filter(geoid=='33460')
+
+
+metros <-  get_acs(
+    geography = "metropolitan statistical area/micropolitan statistical area",
+    variables = my_variables,
+    year = "2017",
+    survey = "acs1"
+    ) %>% clean_names()
+
+
+#bind together 
+diversity <- bind_rows(state_diversity, metro_diversity)
+
+
+
+core_diversity <-  county_diversity %>% filter(geoid=='27053' | geoid=='27123') %>%
+  mutate(group = case_when(variable=='nh_whitealone'~'white',
+variable=='totpop'~'tot',
+TRUE~'color')) %>% group_by(year, group) %>% summarise(est=sum(estimate))
+
+write.csv(core_diversity, './output/core_diversity.csv', row.names=FALSE)
+
+
+
+#Set the variables for second set (sex by age)   
+my_variables2 <-  c(mtot = "B01001_002",
+                   mU5_tot = "B01001_003",
+                   m5_9_tot = "B01001_004",
+                   m10_14_tot = "B01001_005",
+                   m15_17_tot = "B01001_006",
+                   ftot = "B01001_026",
+                   fU5_tot = "B01001_027",
+                   f5_9_tot = "B01001_028",
+                   f10_14_tot = "B01001_029",
+                   f15_17_tot = "B01001_030",
+                   #white non-hispanic
+                   mtot_wnh = "B01001H_002",
+                   mU5_wnh = "B01001H_003",
+                   m5_9_wnh = "B01001H_004",
+                   m10_14_wnh = "B01001H_005",
+                   m15_17_wnh = "B01001H_006",
+                   ftot_wnh = "B01001H_017",
+                   fU5_wnh = "B01001H_018",
+                   f5_9_wnh = "B01001H_019",
+                   f10_14_wnh = "B01001H_020",
+                   f15_17_wnh = "B01001H_021")
+
+metro_sex_by_age <-  map_dfr(
+  years,
+  ~ get_acs(
+    geography = "metropolitan statistical area/micropolitan statistical area",
+    variables = my_variables2,
+    year = .x,
+    survey = "acs1",
+    output="wide"
+    ),
+  .id = "year"
+  ) %>% clean_names() %>% filter(geoid=='33460')
+
+
+
+
+```
+
+
+
+```{r}
+metro7_diversity <-  metro7_diversity %>% mutate(group = case_when())
+```
+
+
+
+
+#Kids versus adults
+```{r}
+metro_sex_by_age <-  metro_sex_by_age %>% mutate(total_u18 = m_u5_tot_e+m5_9_tot_e+m10_14_tot_e+m15_17_tot_e+f_u5_tot_e+f5_9_tot_e+f10_14_tot_e+f15_17_tot_e,
+                                                 total_u18_wnh = m_u5_wnh_e + m5_9_wnh_e + m10_14_wnh_e +
+                                                   m15_17_wnh_e + f_u5_wnh_e + f5_9_wnh_e + f10_14_wnh_e + f15_17_wnh_e,
+                                                 total_u18_color = total_u18-total_u18_wnh,
+                                                 pct_u18_color = round((total_u18_color/total_u18)*100,2),
+                                                 adult_total = (mtot_e+ftot_e)-total_u18,
+                                                 adult_wnh = (mtot_wnh_e+ftot_wnh_e)-total_u18_color,
+                                                 adult_color = adult_total-adult_wnh,
+                                                 pct_adult_color = round((adult_color/adult_total)*100,2))
+
+metro_sex_by_age %>% select(year, pct_u18_color, pct_adult_color)%>%  knitr::kable("html") %>% 
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"), full_width = F, position="left")
+```
+
+
+
+
+
+#Percent people of color
+```{r, message=FALSE, warning=FALSE}
+
+
+overall <- dcast(diversity%>% select(year, name, variable, estimate), year+name ~ variable) %>% mutate(pct_color = round(((totpop-nh_whitealone)/totpop)*100,2))
+
+
+dcast(overall %>% select(year, name, pct_color), name ~year)%>%  knitr::kable("html") %>% 
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"), full_width = F, position="left")
+```
+
+
+#Groups as share of pop- Metro area
+```{r, message=FALSE, warning=FALSE}
+
+#need to add 2018 
+
+dcast(diversity %>% filter(name=='Minneapolis-St. Paul-Bloomington, MN-WI Metro Area', variable!='totpop', variable!='nothispanic')   %>% select(variable, year, estimate), variable ~ year)%>% clean_names() %>%   mutate(pct2012=round((`x2012`/sum(`x2012`)*100),1), pct2018 = round((`x2018`/sum(`x2018`)*100),1))%>% select(variable, pct2012, pct2018)%>%  knitr::kable("html") %>% 
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"), full_width = F, position="left")
+```
+
+#Groups as share of pop-Statewide
+```{r, warning=FALSE, message=FALSE}
+dcast(diversity %>% filter(name=='Minnesota', variable!='totpop', variable!='nothispanic')   %>% select(variable, year, estimate), variable ~ year)%>% clean_names() %>%   mutate(pct2012=round((`x2012`/sum(`x2012`)*100),1), pct2018 = round((`x2018`/sum(`x2018`)*100),1))%>% select(variable, pct2012, pct2018)%>%  knitr::kable("html") %>% 
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"), full_width = F, position="left")
+```
+
+
+#How metros compare in diversity
+Metros with 200k or more people
+```{r}
+#filter out to only metro areas (eliminates the micro areas)
+#filter out suppressed records where estimate is NA
+#eliminate the "not hispanic" variable that we don't need
+
+compare_metros <-  metros %>%
+  filter(grepl("Metro Area", name), estimate!='NA', variable!='nothispanic') %>%
+  mutate(pct_moe = moe/estimate,
+          group = case_when(variable=='totpop'~'total',
+                             variable =='nh_whitealone'~'white',
+                              TRUE~'color')) 
+
+
+compare_metros <-  compare_metros %>% filter(variable=='nh_whitealone' | variable=='totpop') %>% select(name, variable, estimate)
+
+
+#tally up the total people of color by subtracting the white non-hispanics from the total
+compare_metros_wide <-  pivot_wider(compare_metros, names_from=variable, values_from=estimate) %>% mutate(pct_color = round(((totpop-nh_whitealone)/totpop)*100,2))
+
+#only show metros with 2 million or more people 
+#by population, we are the 11th largest metro in the nation, as of 2017 data
+#there are 31 metros with 2 million or more people, as of 2017 data
+#but you can see that in terms of diversity we are among the whitest in that group of large metros
+compare <-  compare_metros_wide %>% arrange((pct_color)) %>% filter(totpop>=2000000)
+
+datatable(compare)
+
+```
+
+
+```{r}
+acs_variable_list <- load_variables(2017, "acs1", cache = TRUE)
+
+B1001_vars <- acs_variable_list %>%
+  filter(str_detect(name, "^B01001_") | str_detect(name, "^B01001B") | str_detect(name, "^B01001C") |
+           str_detect(name, "^B01001D") | str_detect(name, "^B01001F") |str_detect(name, "^B01001G") |
+           str_detect(name, "^B01001H") | str_detect(name, "^B01001I")) %>%
+  pull(name)
+
+
+
+years <- lst( 2018)
+
+metro_sex_by_age <-  map_dfr(
+  years,
+  ~ get_acs(
+    geography = "metropolitan statistical area/micropolitan statistical area",
+    variables = B1001_vars,
+    year = .x,
+    survey = "acs1"
+  ),
+  .id = "year"
+) %>% clean_names() %>% filter(geoid=='33460')
+
+metro_sex_by_age <-  left_join(metro_sex_by_age, acs_variable_list %>% select(name, label), by=c("variable"="name")) %>% 
+  mutate(label=case_when(label=='Estimate!!Total'~ 'Total', TRUE ~str_sub(label,18,255)))
+
+metro_sex_by_age <-  metro_sex_by_age %>% mutate(gender = case_when(str_sub(label,1,3)=='Tot'~'Total',
+                                                                    str_sub(label,1,3)=='Fem'~'Female',
+                                                                    str_sub(label,1,3)=='Mal'~'Male'))
+
+metro_sex_by_age <-  metro_sex_by_age %>% mutate(agegroup = case_when(grepl("Under 5", label) ~ '0 to 9',
+                                                                      grepl("5 to 9", label)~'0 to 9',
+                                                                      grepl("10 to 14", label)~'10 to 17',
+                                                                      grepl("15 to 17", label)~'10 to 17',
+                                                                      grepl("18 and", label)~'18 to 24',
+                                                                      grepl("20", label)~'18 to 24',
+                                                                      grepl("21", label)~'18 to 24',
+                                                                      grepl("20 to 24", label)~'18 to 24',
+                                                                      grepl("22 to 24", label)~'18 to 24',
+                                                                      grepl("25 to", label)~'25 to 34',
+                                                                      grepl("30 to", label)~'25 to 34',
+                                                                      grepl("35 to", label)~'35 to 44',
+                                                                      grepl("40 to", label)~'35 to 44',
+                                                                      grepl("45 to", label)~'45 to 54',
+                                                                      grepl("50 to",label)~'45 to 54',
+                                                                      grepl("55 to", label)~'55 to 64',
+                                                                      grepl("60 and", label)~'55 to 64',
+                                                                      grepl("62 to", label)~'55 to 64',
+                                                                      grepl("65 to", label)~'65 to 74',
+                                                                      grepl("65 and", label)~'65 to 74',
+                                                                      grepl("70 to", label)~'65 to 74',
+                                                                      grepl("67 to", label)~'65 to 74',
+                                                                      grepl("75 to", label)~'75 to 84',
+                                                                      grepl("80 to", label)~'75 to 84',
+                                                                      grepl("85 years",label)~'85 and up',
+                                                                      TRUE~'Total') )
+
+metro_sex_by_age <-  metro_sex_by_age %>% mutate(racialgroup = case_when(str_sub(variable,1,7)=='B01001B'~'Black',
+                                                                         str_sub(variable,1,7)=='B01001C'~'Am Indian',
+                                                                         str_sub(variable,1,7)=='B01001D'~'Asian',
+                                                                         str_sub(variable,1,7)=='B01001E'~ 'Pac Isl',
+                                                                         str_sub(variable,1,7)=='B01001F'~'Other',
+                                                                         str_sub(variable,1,7)=='B01001G' ~'Multi',
+                                                                         str_sub(variable,1,7)=='B01001H'~ 'White-NonHispanic',
+                                                                         str_sub(variable,1,7)=='B01001I'~'Hispanic',
+                                                                         str_sub(variable,1,7)=='B01001_'~'Total'))
+
+metro_sex_by_age <-  metro_sex_by_age %>% mutate(largegroup = case_when(racialgroup=='White-NonHispanic'~'White',
+                                                                        racialgroup=='Total'~'Total',
+                                                                        TRUE~'People of color'))
+
+
+
+metro_sex_by_age_2 <-  metro_sex_by_age %>%filter(label!='Total', largegroup!='Total') %>%  group_by(gender, agegroup, racialgroup, largegroup) %>% summarise(est=sum(estimate))
+
+metro_sex_by_age_3 <- metro_sex_by_age_2 %>% group_by(agegroup, largegroup) %>% summarise(esti = sum(est))
+
+metro_sex_by_age_3 <- pivot_wider(metro_sex_by_age_3, names_from = largegroup, values_from=esti) %>% clean_names() %>% mutate(pct_white = white/(white+people_of_color), pct_color = people_of_color/(white+people_of_color))
+
+```
+
+```{r}
+gdata <-  metro_sex_by_age_3 %>% filter(agegroup!='Total') %>% select(agegroup, pct_color, pct_white) %>% mutate(pct_color=round(pct_color,2), pct_white=round(pct_white,2))
+
+library(reshape2)
+
+gdata <-  melt(gdata, id.vars="agegroup")
+
+gdata$variable <-  factor(gdata$variable, levels=c("pct_white", "pct_color"), labels=c("White", "People of Color"))
+
+fill <-  c("#5F9EA0", "#E1B378")
+my_x_label <- "Age Groups"
+my_y_label <-  "Percent"
+
+g1 <-  ggplot() + 
+  geom_bar(aes(y=value, x=agegroup, fill=variable), data=gdata, stat="identity") + 
+  theme(legend.position="bottom", legend.direction="horizontal", legend.title=element_blank())+
+  #scale_x_continuous(name=my_x_label)+
+  scale_y_continuous(name="Percent", limits=c(0, 1), labels=percent)+
+  scale_fill_manual(values=fill)+
+  theme_hc()+
+      labs(title = "Metro diversity by age group", 
+       subtitle = "2018",
+       caption = "Graphic by MaryJo Webster")
+
+plot(g1)
+```
+
+
+
+```{r movetoS3, echo=FALSE, eval=FALSE, results="hide"}
+
+
+
+
+Sys.setenv("AWS_ACCESS_KEY_ID" =  rstudioapi::askForPassword("AWS_ACCESS_KEY_ID"),
+
+           "AWS_SECRET_ACCESS_KEY" = rstudioapi::askForPassword("AWS_SECRET_ACCESS_KEY"))
+		   
+		   get_bucket("strib-data-public")
+
+
+put_object(file = "ACS1yr_diversity.html", object = "projects/census/ACS1yr_diversity.html", bucket = "strib-data-public")
+
+put_object(file = "ACS1yr_diversity.html", object = "projects/census/ACS1yr_diversity.html", bucket = "strib-data-public", acl=c("public-read"))
+
+
+
+```

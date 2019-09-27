@@ -1,0 +1,184 @@
+---
+title: "ACS1yr_employ"
+author: "MaryJoWebster"
+date: "September 24, 2019"
+output: html_document
+---
+
+```{r setup, include=FALSE, warning=FALSE, message=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(tidycensus)
+library(tidyverse)
+library(janitor)
+library(stringr)
+library(scales)
+library(ggthemes)
+library(leaflet)
+library(sf)
+library(stringr)
+library(rmarkdown)
+library(knitr)
+library(reshape2)
+library(DT)
+
+census_api_key(Sys.getenv("CENSUS_API_KEY"))
+
+
+acs_variable_list <- load_variables(2018, "acs1", cache = TRUE)
+
+#Table B23001 - Sex by age by employment status
+
+my_vars <- acs_variable_list %>%
+  filter(str_detect(name, "^B23001_")) %>%
+  pull(name)
+
+years <- lst(2014, 2018)
+
+employ_by_age <-  map_dfr(
+  years,
+  ~ get_acs(
+    geography = "state",
+    state="MN",
+    variables = my_vars,
+    year = .x,
+    survey = "acs1"
+  ),
+  .id = "year"
+) %>% clean_names() 
+
+us_employ <-  map_dfr(
+  years,
+  ~ get_acs(
+    geography = "us",
+    variables = my_vars,
+    year = .x,
+    survey = "acs1"
+  ),
+  .id = "year"
+) %>% clean_names() 
+
+
+#B23001_embargo <-  read_csv('./2018files/B23001.csv', skip=1, col_types=c(.default='i', X1='c', X2='c')) %>% clean_names() %>% select(-id, -geographic_area_name)
+
+#B23001_embargo_estimate <-  gather(B23001_embargo, key="label", value = "estimate")  %>% filter(grepl("estimate", label)) %>% mutate(year='2018')
+
+
+employ_by_age <-  left_join(employ_by_age, acs_variable_list %>% select(name, label), by=c("variable"="name")) %>% 
+  mutate(label=case_when(label=='Estimate!!Total'~ 'Total', TRUE ~str_sub(label,18,255)))
+
+
+us_employ <-  left_join(us_employ, acs_variable_list %>% select(name, label), by=c("variable"="name")) %>% 
+  mutate(label=case_when(label=='Estimate!!Total'~ 'Total', TRUE ~str_sub(label,18,255)))
+
+
+employ <-  bind_rows(employ_by_age %>% select(name, year, label, estimate), us_employ %>% select(name, year, label, estimate))
+
+
+employ <-  employ %>% mutate(gender = case_when(str_sub(label,1,3)=='Tot'~'Total',
+                                                label=='estimate_total'~'Total',
+                                                                    str_sub(label,1,3)=='Fem'~'Female',
+                                                                    str_sub(label,1,3)=='Mal'~'Male',
+                                                str_sub(label,1,19)=='estimate_total_male'~'Male',
+                                                str_sub(label,1,19)=='estimate_total_fema'~'Female'))
+
+employ <-  employ %>% mutate(status = case_when(grepl("!!In labor force!!", label)~'Ignore',
+                                                grepl("_in_labor_force_", label)~'Ignore',
+                                                grepl("!!Not in labor force!!", label)~'Ignore',
+                                                grepl("not_in_labor_force_", label)~'Ignore',
+  grepl("!!Not in labor force", label)~'Not in labor force',
+
+                                                grepl("_not_in_labor_force", label)~'Not in labor force',
+                                                grepl("!!In labor force", label)~'In labor force',
+                                                grepl("_in_labor_force", label)~'In labor force'))
+
+employ <-  employ %>% mutate(agegroup = case_when(grepl("16", label)~'16 to 19',
+                                                  grepl("20", label)~'20 to 21',
+                                                  grepl("22", label)~'22 to 24',
+                                                  grepl("25", label)~'25 to 29',
+                                                  grepl("30", label)~'30 to 34',
+                                                  grepl("35", label)~'35 to 44',
+                                                  grepl("45", label)~'45 to 54',
+                                                  grepl("55", label)~'55 to 59',
+                                                  grepl("60", label)~'60 to 61',
+                                                  grepl("62", label)~'62 to 64',
+                                                  grepl("65", label)~'65 to 69',
+                                                  grepl("70", label)~'70 to 74',
+                                                  grepl("75", label)
+                                                  ~'75 and up'),
+                             big_age_group = case_when(agegroup %in% c('75 and up', '70 to 74', '65 to 69')~'65 and over',
+                                                       agegroup %in% c('25 to 29', '30 to 34', '35 to 44')~'Parent age',
+                                                       agegroup %in% c('16 to 19', '20 to 21', '22 to 24')~'Young workers',
+                                                       agegroup %in% c('45 to 54', '55 to 59', '60 to 61', '62 to 64')~'Older workers'))
+
+
+employ$status[is.na(employ$status)] <-  'Total'
+employ$agegroup[is.na(employ$agegroup)] <-  'Total'
+employ$big_age_group[is.na(employ$big_age_group)] <-  'Total'
+
+
+employ <-  employ %>% filter(status!='Ignore')
+
+employ_biggroups <-  employ %>% filter(gender!='Total', agegroup!='Total') %>%  group_by(name, year, big_age_group, status) %>% summarise(est=sum(estimate))
+
+
+yr_status <-  employ %>% filter(gender!='Total', agegroup!='Total') %>% group_by(name, year,  status) %>% summarise(est=sum(estimate))
+
+women <-  employ %>% filter(gender!='Total', agegroup!='Total', gender=='Female') %>% group_by(name, year, gender, big_age_group, status) %>% summarise(est=sum(estimate))
+
+```
+
+#Age 65 and older
+```{r}
+pivot_wider(employ_biggroups, names_from = status, values_from = est) %>% clean_names() %>% mutate(pct = (in_labor_force/total)*100) %>% filter(big_age_group=='65 and over')
+```
+
+
+#age 45 to 64
+```{r}
+pivot_wider(employ_biggroups, names_from = status, values_from = est) %>% clean_names() %>% mutate(pct = (in_labor_force/total)*100) %>% filter(big_age_group=='Older workers')
+```
+
+#Parent age workers (25 to 44)
+```{r}
+pivot_wider(employ_biggroups, names_from = status, values_from = est) %>% clean_names() %>% mutate(pct = (in_labor_force/total)*100) %>% filter(big_age_group=='Parent age')
+```
+
+#Young workers (16 to 24)
+```{r}
+pivot_wider(employ_biggroups, names_from = status, values_from = est) %>% clean_names() %>% mutate(pct = (in_labor_force/total)*100) %>% filter(big_age_group=='Young workers')
+```
+
+
+```{r}
+pivot_wider(yr_status, names_from = status, values_from = est) %>% clean_names() %>% mutate(pct = (in_labor_force/total)*100)
+```
+
+```{r}
+pivot_wider(women, names_from = status, values_from = est) %>% clean_names() %>% mutate(pct = (in_labor_force/total)*100) %>% filter(big_age_group=='Parent age')
+```
+
+```{r}
+women_smallgroups <-  employ %>% filter(gender!='Total', agegroup!='Total', gender=='Female') %>% group_by(year, gender, agegroup, status) %>% summarise(est=sum(estimate))
+
+pivot_wider(women_smallgroups, names_from = status, values_from = est) %>% clean_names() %>% mutate(pct = (in_labor_force/total)*100) %>% filter(agegroup=='30 to 34' ) %>% select(year, agegroup, pct)
+
+
+
+```
+```{r}
+pivot_wider(women_smallgroups, names_from = status, values_from = est) %>% clean_names() %>% mutate(pct = (in_labor_force/total)*100) %>% filter(agegroup=='35 to 44' ) %>% select(year, agegroup, pct)
+```
+```{r}
+employ_by_age %>% filter(grepl("30 to 34", label), grepl("Female", label)) %>% select(year, label,estimate, moe)
+
+write.csv(employ_by_age, 'employ_by_age.csv', row.names = FALSE)
+```
+
+
+```{r}
+
+```
+

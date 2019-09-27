@@ -1,0 +1,354 @@
+---
+title: "acs1yr_income"
+author: "MaryJoWebster"
+date: "September 12, 2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r, messages=FALSE, warning=FALSE}
+#library(censusapi)
+library(tidycensus)
+library(tidyverse)
+library(readxl)
+library(janitor)
+library(scales)
+library(ggthemes)
+library(leaflet)
+library(sf)
+library(stringr)
+library(rmarkdown)
+library(knitr)
+library(reshape2)
+library(DT)
+
+
+
+
+
+
+
+#the first time you use your API key, you need to enter it here 
+#this will load it into your REnviron file
+#census_api_key("put your key here", install=TRUE)
+
+#then on subsequent uses, you can just use this code
+census_api_key(Sys.getenv("CENSUS_API_KEY"))
+
+#this will generate a list of the tables and variables
+#this particular code is asking for the 2017 5-year American community survey data
+#it's storing it in a new data frame and then I've set it to write out to csv
+
+#acs_variable_list <- load_variables(2017, "acs5", cache = TRUE)
+#write.csv(acs_variable_list, 'acs_variable_list_2017.csv', row.names = FALSE)
+
+my_variables <- c(all = "B19013_001",
+                            black = "B19013B_001",
+                            indian = "B19013C_001",
+                            asian = "B19013D_001",
+                            other = "B19013F_001",
+                            multi = "B19013G_001",
+                            white_nh = "B19013H_001",
+                            hispanic = "B19013I_001",
+                  one_per_HH = "B19019_002",
+                            four_per_HH = "B19019_005",
+                            med_earnings = "B20002_001",
+                            med_earn_male = "B20002_002",
+                            med_earn_female = "B20002_003")
+
+years <-  lst(2012, 2013, 2014, 2015, 2016, 2017, 2018)
+
+
+state_income <-  map_dfr(
+  years,
+  ~ get_acs(
+    geography = "state",
+    variables = my_variables,
+    year = .x,
+    survey = "acs1"
+    ),
+  .id = "year"
+  ) %>% clean_names() %>% mutate(level='states')
+
+
+county_income <-  map_dfr(
+  years,
+  ~ get_acs(
+    geography = "county",
+    variables = my_variables,
+    state = "MN",
+    year = .x,
+    survey = "acs1"
+    ),
+  .id = "year"
+  ) %>% clean_names() %>% mutate(level='mn counties')
+
+
+us_income <-  map_dfr(
+  years,
+  ~ get_acs(
+    geography = "us",
+    variables = my_variables,
+    year = .x,
+    survey = "acs1"
+    ),
+  .id = "year"
+  ) %>% clean_names() %>% mutate(level='us')
+
+metro_income <-  map_dfr(
+  years,
+  ~ get_acs(
+    geography = "metropolitan statistical area/micropolitan statistical area",
+    variables = my_variables,
+    year = .x,
+    survey = "acs1"
+    ),
+  .id = "year"
+  ) %>% clean_names() %>% mutate(level='metros')
+
+#combine files
+
+income <- bind_rows(county_income, state_income, us_income, metro_income)
+
+
+
+
+
+
+
+
+
+
+```
+
+
+```{r}
+
+#clearly we need to adjust for inflation
+#let's import CPI data
+#be sure the Excel file is closed before running this
+cpi <- read_excel("cpi_2000_2018.xlsx", sheet="BLS Data Series", range="A12:P31") %>% clean_names() %>% mutate(yr=as.character(year))
+
+#pull out the CPI value for most current year that we'll use in the calculation
+#row 15 for the 2014 CPI and row 19 for the 2018 CPI
+#both are in column number 14
+#pluck is part of purr package in tidyverse
+
+cpi2018 <- cpi %>% pluck(14,19)
+
+income <-  left_join(income, cpi %>% select(yr, annual), by=c("year"="yr")) %>% rename(cpi=annual)
+
+
+#create a new column with the inflation-adjusted 
+income <-  income %>% mutate(adj_estimate = (cpi2018/cpi)*estimate,
+                             adj_moe = (cpi2018/cpi)*moe)
+
+
+income <-  income %>% mutate(low=adj_estimate-adj_moe, high=adj_estimate+adj_moe)
+
+```
+
+```{r}
+states_hhincome <-  income %>% filter(level=='states', variable=='all') %>% select(year, name, adj_estimate)
+
+states_hhincome <-  dcast(states_hhincome, name ~ year)
+
+write.csv(states_hhincome, './output/states_hhincome.csv', row.names=FALSE)
+
+
+
+states_hhincome_moe <-  income %>% filter(level=='states', variable=='all') %>% select(year, name, adj_moe)
+
+states_hhincome_moe <-  dcast(states_hhincome_moe, name ~ year)
+
+write.csv(states_hhincome_moe, './output/states_hhincome_moe.csv', row.names=FALSE)
+```
+
+```{r}
+states_earnings <-  income %>% filter(level=='states', variable=='med_earnings') %>% select(year, name, adj_estimate, adj_moe)
+
+states_earnings_est <-  dcast(states_earnings %>% select(-adj_moe), name  ~ year)
+
+states_earnings_moe <-  dcast(states_earnings %>% select(-adj_estimate), name  ~ year)
+
+states_earnings_final <-  inner_join(states_earnings_est, states_earnings_moe, by=c("name"="name"))
+
+write.csv(states_earnings_final, './output/states_earnings.csv', row.names=FALSE)
+
+
+income %>% filter(level=='us', variable=='all')
+```
+
+
+
+
+#Median household income - 1 person households, adjusted
+```{r}
+income %>% filter(variable=='one_per_HH', name=='Minnesota') %>% select(year, adj_estimate, adj_moe) %>% mutate(low=adj_estimate-adj_moe, high=adj_estimate+adj_moe) %>% select(-adj_moe)
+```
+
+#4 person households
+```{r}
+income %>% filter(variable=='four_per_HH', name=='Minnesota') %>% select(year, adj_estimate, adj_moe) %>% mutate(low=adj_estimate-adj_moe, high=adj_estimate+adj_moe) %>% select(-adj_moe)
+```
+
+
+
+#Median household income -- all households, adjusted
+```{r}
+income %>% filter(variable=='all', name=='Minnesota') %>% select(year, adj_estimate, adj_moe) %>% mutate(low=adj_estimate-adj_moe, high=adj_estimate+adj_moe) %>% select(-adj_moe)
+```
+
+#Median earnings - both genders
+```{r}
+income %>% filter(variable=='med_earnings', name=='Minnesota') %>% select(year, adj_estimate, adj_moe) %>% mutate(low=adj_estimate-adj_moe, high=adj_estimate+adj_moe) %>% select(-adj_moe)
+```
+
+#Median earnings women
+```{r}
+income %>% filter(variable=='med_earn_female', name=='Minnesota') %>% select(year, adj_estimate, adj_moe) %>% mutate(low=adj_estimate-adj_moe, high=adj_estimate+adj_moe) %>% select(-adj_moe)
+```
+
+#Median earnings men
+```{r}
+income %>% filter(variable=='med_earn_male', name=='Minnesota') %>% select(year, adj_estimate, adj_moe) %>% mutate(low=adj_estimate-adj_moe, high=adj_estimate+adj_moe) %>% select(-adj_moe)
+```
+
+#Gender earnings gap
+```{r}
+pivot_wider(income %>% filter(name=='Minnesota', variable=='med_earn_male' | variable=='med_earn_female') %>% select(variable, year, adj_estimate), names_from = variable, values_from = adj_estimate ) %>% mutate(gap = med_earn_male-med_earn_female)
+```
+
+
+
+
+#State level, groups across time
+```{r, message=FALSE, warning=FAL}
+
+state_groups <- dcast(income%>% filter(name=='Minnesota') %>% select(year, variable, adj_estimate), variable ~ year) %>% rename(y2018=`2018`, y2017=`2017`, y2016=`2016`, y2015=`2015`, y2014=`2014`)
+
+
+
+state_groups <- state_groups %>%  select(variable, y2014, y2015, y2016, y2017,  y2018 )%>% mutate(y2014r= round(y2014,0), y2017r = round(y2017, 0), y2018r=round(y2018,0),diff= round((y2018r-y2014r)/y2014r*100,1)) %>% select(-y2014, -y2017,-y2018) %>% arrange(desc(diff))
+
+datatable(state_groups)
+
+
+state_groups_moe <- dcast(income%>% filter(name=='Minnesota') %>% select(year, variable, adj_moe), variable ~ year) 
+
+state_groups_join <-  inner_join(state_groups, state_groups_moe, by=c("variable"="variable"))
+
+write.csv(state_groups_join, './output/stategroups.csv')
+```
+
+#Median HH income -- all households -- by county
+
+```{r, warning=FALSE, message=FALSE}
+
+my_counties <-  c("27003", "27019", "27037", "27053", "27123", "27139", "27163", "27137",
+                  "0500000US27003", "0500000US27019", "0500000US27037", "0500000US27053", "0500000US27123", "0500000US27139", "0500000US27163", "0500000US27137")
+
+
+
+all_counties <- dcast(income%>% filter(variable=='all', geoid %in% my_counties) %>% select(year, name, adj_estimate), name ~ year) %>% rename(y2018=`2018`, y2017=`2017`, y2016=`2016`, y2015=`2015`, y2014=`2014`)
+
+
+
+all_counties <- all_counties %>%  select(name, y2014, y2017,  y2018 )%>% mutate(y2014r= round(y2014,0), y2017r = round(y2017, 0), y2018r=round(y2018,0),diff= round((y2018r-y2014r)/y2014r*100,1)) %>% select(-y2014, -y2017,-y2018) %>% arrange(desc(diff))
+
+datatable(all_counties)
+```
+
+
+
+
+#Black households, by county
+```{r, message=FALSE, warning=FALSE}
+
+black_counties <- dcast(income%>% filter(variable=='black',geoid %in% my_counties) %>% select(year, name, adj_estimate), name ~ year) %>% rename(y2018=`2018`, y2017=`2017`, y2016=`2016`, y2015=`2015`, y2014=`2014`)
+
+
+
+black_counties <- black_counties %>%  select(name, y2014, y2017,  y2018 )%>% mutate(y2014r= round(y2014,0), y2017r = round(y2017, 0), y2018r=round(y2018,0),diff= round((y2018r-y2014r)/y2014r*100,1)) %>% select(-y2014, -y2017,-y2018) %>% arrange(desc(diff))
+
+datatable(black_counties)
+```
+
+
+#Hispanic households, by county
+
+```{r, message=FALSE, warning=FALSE}
+hispanic_counties <- dcast(income%>% filter(variable=='hispanic',geoid %in% my_counties) %>% select(year, name, adj_estimate), name ~ year) %>% rename(y2018=`2018`, y2017=`2017`, y2016=`2016`, y2015=`2015`, y2014=`2014`)
+
+
+
+hispanic_counties <- hispanic_counties %>%  select(name, y2014, y2017,  y2018 )%>% mutate(y2014r= round(y2014,0), y2017r = round(y2017, 0), y2018r=round(y2018,0),diff= round((y2018r-y2014r)/y2014r*100,1)) %>% select(-y2014, -y2017,-y2018) %>% arrange(desc(diff))
+
+datatable(hispanic_counties)
+```
+
+#Asian households, by county
+```{r, message=FALSE, warning=FALSE}
+asian_counties <- dcast(income%>% filter(variable=='asian',geoid %in% my_counties) %>% select(year, name, adj_estimate), name ~ year) %>% rename(y2018=`2018`, y2017=`2017`, y2016=`2016`, y2015=`2015`, y2014=`2014`)
+
+
+
+asian_counties <- asian_counties %>%  select(name, y2014, y2017,  y2018 )%>% mutate(y2014r= round(y2014,0), y2017r = round(y2017, 0), y2018r=round(y2018,0),diff= round((y2018r-y2014r)/y2014r*100,1)) %>% select(-y2014, -y2017,-y2018) %>% arrange(desc(diff))
+
+datatable(asian_counties)
+```
+
+#4-person households, by county
+```{r, message=FALSE, warning=FALSE}
+fourper_counties <- dcast(income%>% filter(variable=='four_per_HH',geoid %in% my_counties) %>% select(year, name, adj_estimate), name ~ year) %>% rename(y2018=`2018`, y2017=`2017`, y2016=`2016`, y2015=`2015`, y2014=`2014`)
+
+
+
+fourper_counties <- fourper_counties %>%  select(name, y2014, y2017,  y2018 )%>% mutate(y2014r= round(y2014,0), y2017r = round(y2017, 0), y2018r=round(y2018,0),diff= round((y2018r-y2014r)/y2014r*100,1)) %>% select(-y2014, -y2017,-y2018) %>% arrange(desc(diff))
+
+datatable(fourper_counties)
+```
+
+#Median earnings- females
+```{r, message=FALSE, warning=FALSE}
+female_counties <- dcast(income%>% filter(variable=='med_earn_female',geoid %in% my_counties) %>% select(year, name, adj_estimate), name ~ year) %>% rename(y2018=`2018`, y2017=`2017`, y2016=`2016`, y2015=`2015`, y2014=`2014`)
+
+
+
+female_counties <- female_counties %>%  select(name, y2014, y2017,  y2018 )%>% mutate(y2014r= round(y2014,0), y2017r = round(y2017, 0), y2018r=round(y2018,0),diff= round((y2018r-y2014r)/y2014r*100,1)) %>% select(-y2014, -y2017,-y2018) %>% arrange(desc(diff))
+
+datatable(female_counties)
+```
+
+#Median earnings - males
+```{r, warning=FALSE, message=FALSE}
+male_counties <- dcast(income%>% filter(variable=='med_earn_male',geoid %in% my_counties) %>% select(year, name, adj_estimate), name ~ year) %>% rename(y2018=`2018`, y2017=`2017`, y2016=`2016`, y2015=`2015`, y2014=`2014`)
+
+
+
+male_counties <- male_counties %>%  select(name, y2014, y2017,  y2018 )%>% mutate(y2014r= round(y2014,0), y2017r = round(y2017, 0), y2018r=round(y2018,0),diff= round((y2018r-y2014r)/y2014r*100,1)) %>% select(-y2014, -y2017,-y2018) %>% arrange(desc(diff))
+
+datatable(male_counties)
+```
+
+
+```{r}
+
+```
+
+
+```{r}
+income_pivot <-  income %>% filter(year=='2017' | year=='2018') %>% select(year, name, variable, adj_estimate, adj_moe)
+
+write.csv(income_pivot, './output/income.csv', row.names=FALSE)
+
+income_mn <-  pivot_wider(income %>% filter(name=='Minnesota') %>% select(year, variable, adj_estimate), names_from = year, values_from=adj_estimate)
+
+write.csv(income_mn, './output/income_mn.csv', row.names=FALSE)
+
+write.csv(income %>% filter(name=='United States', variable=='med_earnings') %>% select(year, adj_estimate, adj_moe), './output/us_earnings.csv', row.names=FALSE)
+```
+

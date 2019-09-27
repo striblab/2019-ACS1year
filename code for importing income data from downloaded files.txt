@@ -1,0 +1,44 @@
+#import EMBARGOED data (after downloading from data.census.gov)
+#need to download Minnesota and Minnesota counties for the following tables: B19013, B19019, B20002, 
+#B19013B, B19013C, B19013D, B19013F, B19013G, B19013H, B19013I
+#then unzip the files
+#then rename each file down to just the tableIDnumber.csv
+#store in "2018files" subfolder
+
+B19013 <- read_csv('./2018files/B19013.csv', skip=2, col_names=FALSE, col_types=c(X3='i', X4='i') ) %>% rename(geoid=X1, name=X2, estimate=X3, moe=X4) %>% mutate(variable = 'all', year='2018')
+
+B19019 <-  read_csv('./2018files/B19019.csv', skip=2, col_names=FALSE, col_types=c(X11='i', X12='i')) %>% select(geoid=X1, name=X2, estimate=X11, moe=X12 ) %>% mutate(variable='four_per_HH', year='2018')
+
+
+B19019_2 <-  read_csv('./2018files/B19019.csv', skip=2, col_names=FALSE, col_types=c(X5='i', X6='i')) %>% select(geoid=X1, name=X2, estimate=X5, moe=X6 ) %>% mutate(variable='one_per_HH', year='2018')
+
+B20002_1 <-  read_csv('./2018files/B20002.csv', skip=2, col_names=FALSE, col_types=c(X3='i', X4='i')) %>% select(geoid=X1, name=X2, estimate=X3, moe=X4) %>% mutate(variable='med_earnings', year='2018')
+
+B20002_2 <-  read_csv('./2018files/B20002.csv', skip=2, col_names=FALSE, col_types=c(X5='i', X6='i')) %>% select(geoid=X1, name=X2, estimate=X5, moe=X6) %>% mutate(variable='med_earn_male', year='2018')
+
+B20002_3 <-  read_csv('./2018files/B20002.csv', skip=2, col_names=FALSE, col_types=c(X7='i', X8='i')) %>% select(geoid=X1, name=X2, estimate=X7, moe=X8) %>% mutate(variable='med_earn_female', year='2018')
+
+
+
+B19013B <- read_csv('./2018files/B19013B.csv', skip=2, col_names=FALSE, col_types=c(X3='i', X4='i') ) %>% rename(geoid=X1, name=X2, estimate=X3, moe=X4) %>% mutate(variable = 'black', year='2018')
+
+
+B19013C <- read_csv('./2018files/B19013C.csv', skip=2, col_names=FALSE , col_types=c(X3='i', X4='i')) %>% rename(geoid=X1, name=X2, estimate=X3, moe=X4) %>% mutate(variable = 'indian', year='2018')
+
+
+B19013D <- read_csv('./2018files/B19013D.csv', skip=2, col_names=FALSE, col_types=c(X3='i', X4='i') ) %>% rename(geoid=X1, name=X2, estimate=X3, moe=X4) %>% mutate(variable = 'asian', year='2018')
+
+
+B19013F <- read_csv('./2018files/B19013F.csv', skip=2, col_names=FALSE, col_types=c(X3='i', X4='i') ) %>% rename(geoid=X1, name=X2, estimate=X3, moe=X4) %>% mutate(variable = 'other', year='2018')
+
+
+B19013G <- read_csv('./2018files/B19013G.csv', skip=2, col_names=FALSE , col_types=c(X3='i', X4='i')) %>% rename(geoid=X1, name=X2, estimate=X3, moe=X4) %>% mutate(variable = 'multi', year='2018')
+
+
+B19013H <- read_csv('./2018files/B19013H.csv', skip=2, col_names=FALSE, col_types=c(X3='i', X4='i') ) %>% rename(geoid=X1, name=X2, estimate=X3, moe=X4) %>% mutate(variable = 'white_nh', year='2018')
+
+
+B19013I <- read_csv('./2018files/B19013I.csv', skip=2, col_names=FALSE, col_types=c(X3='i', X4='i') ) %>% rename(geoid=X1, name=X2, estimate=X3, moe=X4) %>% mutate(variable = 'hispanic', year='2018')
+
+us_income_2018 <- read_csv('./2018files/us_income_2018.csv', col_types=c(year='c'))
+

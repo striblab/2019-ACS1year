@@ -1,0 +1,75 @@
+---
+title: "ACS1yr_inequality"
+author: "MaryJoWebster"
+date: "September 26, 2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+```{r}
+library(tidycensus)
+library(tidyverse)
+library(readxl)
+library(janitor)
+library(scales)
+library(ggthemes)
+library(leaflet)
+library(sf)
+library(stringr)
+library(rmarkdown)
+library(knitr)
+library(reshape2)
+library(DT)
+
+
+census_api_key(Sys.getenv("CENSUS_API_KEY"))
+
+#this will generate a list of the tables and variables
+#this particular code is asking for the 2017 5-year American community survey data
+#it's storing it in a new data frame and then I've set it to write out to csv
+
+#acs_variable_list <- load_variables(2017, "acs5", cache = TRUE)
+#write.csv(acs_variable_list, 'acs_variable_list_2017.csv', row.names = FALSE)
+
+my_variables <- c(gini = "B19083_001")
+
+years <-  lst(2012, 2013, 2014, 2015, 2016, 2017, 2018)
+
+
+state_gini <-  map_dfr(
+  years,
+  ~ get_acs(
+    geography = "state",
+    variables = my_variables,
+    year = .x,
+    survey = "acs1"
+    ),
+  .id = "year"
+  ) %>% clean_names() %>% mutate(level='states')
+
+
+us_gini <-  map_dfr(
+  years,
+  ~ get_acs(
+    geography = "us",
+    variables = my_variables,
+    year = .x,
+    survey = "acs1"
+    ),
+  .id = "year"
+  ) %>% clean_names()
+
+
+gini <-  state_gini %>% select(year, name, estimate, moe)
+
+gini_est <-  dcast(gini %>% select(-moe), name  ~ year)
+
+gini_moe <-  dcast(gini %>% select(-estimate), name  ~ year)
+
+gini_final <-  inner_join(gini_est, gini_moe, by=c("name"="name"))
+
+write.csv(gini_final, './output/gini.csv', row.names=FALSE)
+```
+
