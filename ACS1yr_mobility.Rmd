@@ -1,7 +1,7 @@
 ---
 title: "ACS1yr_mobility"
-author: "MaryJoWebster"
-date: "September 16, 2019"
+author: "MaryJo Webster"
+date:  "Last updated: `r Sys.Date()`"
 output: html_document
 ---
 
@@ -27,6 +27,14 @@ library(kableExtra)
 
 census_api_key(Sys.getenv("CENSUS_API_KEY"))
 
+#Geographic mobility in the past year
+#lives in same house as 1 year ago
+#moved to a new house in same county
+#moved to a new house in a different county (but same state)
+#moved to a new state
+#moved from another country (doesn't necessarily mean they are forign born, though)
+
+#pull these variables
 my_variables <-  c(totpop = "B07001_001",
                             samehouse  = "B07001_017",
                             samecounty = "B07001_033",
@@ -35,8 +43,11 @@ my_variables <-  c(totpop = "B07001_001",
                             abroad = "B07001_081"
                             )
 
+#pull data for these years
 years <-  lst(2012, 2013, 2014, 2015, 2016, 2017, 2018)
 
+
+#pull data for state of MN
 mobility_state <-  map_dfr(
   years,
   ~ get_acs(
@@ -50,7 +61,7 @@ mobility_state <-  map_dfr(
   )%>% clean_names()
 
 
-
+#pull data for all metro areas in the US
 mobility_metro<-  map_dfr(
   years,
   ~ get_acs(
@@ -63,7 +74,8 @@ mobility_metro<-  map_dfr(
   )%>% clean_names()
 
 
-
+#append results together
+#but only grab the Twin Cities metro = geoid 33460
 mobility <-  bind_rows(mobility_state, mobility_metro %>% filter(geoid=='33460'))
 
 
@@ -84,7 +96,7 @@ pivot_wider(mobility %>% filter(geoid=='27') %>% select(year, name, variable, es
   select(year, name, pctdiffstate, pctabroad, pctdiffcounty, pctsamecounty, pctsamehouse)
 ```
 
-
+#State of MN - number of people
 ```{r}
 pivot_wider(mobility %>% filter(geoid=='27') %>% select(year, name, variable, estimate), names_from = variable, values_from=estimate)
 ```

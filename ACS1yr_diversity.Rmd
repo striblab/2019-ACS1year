@@ -33,8 +33,9 @@ library(reshape2)
 library(DT)
 library(aws.s3)
 library(kableExtra)
+library(formattable)
 
-currentyr <- 'x2017'
+
 
 #this only gets the state of MN and the Twin Cities metro area (as defined by feds)
 #it's not possible to download all the metro areas in one swoop unless you use the API
@@ -121,6 +122,7 @@ state_diversity <-  map_dfr(
   ) %>% clean_names()
 
 
+#this pulls counties for Minnesota
 county_diversity <-  map_dfr(
   years,
   ~ get_acs(
@@ -159,7 +161,7 @@ metros <-  get_acs(
 diversity <- bind_rows(state_diversity, metro_diversity)
 
 
-
+#This creates a table of just Hennepin and Ramsey counties combined
 core_diversity <-  county_diversity %>% filter(geoid=='27053' | geoid=='27123') %>%
   mutate(group = case_when(variable=='nh_whitealone'~'white',
 variable=='totpop'~'tot',
@@ -211,11 +213,6 @@ metro_sex_by_age <-  map_dfr(
 
 
 
-```{r}
-metro7_diversity <-  metro7_diversity %>% mutate(group = case_when())
-```
-
-
 
 
 #Kids versus adults
@@ -224,11 +221,11 @@ metro_sex_by_age <-  metro_sex_by_age %>% mutate(total_u18 = m_u5_tot_e+m5_9_tot
                                                  total_u18_wnh = m_u5_wnh_e + m5_9_wnh_e + m10_14_wnh_e +
                                                    m15_17_wnh_e + f_u5_wnh_e + f5_9_wnh_e + f10_14_wnh_e + f15_17_wnh_e,
                                                  total_u18_color = total_u18-total_u18_wnh,
-                                                 pct_u18_color = round((total_u18_color/total_u18)*100,2),
+                                                 pct_u18_color = percent((total_u18_color/total_u18), digits=1),
                                                  adult_total = (mtot_e+ftot_e)-total_u18,
                                                  adult_wnh = (mtot_wnh_e+ftot_wnh_e)-total_u18_color,
                                                  adult_color = adult_total-adult_wnh,
-                                                 pct_adult_color = round((adult_color/adult_total)*100,2))
+                                                 pct_adult_color = percent((adult_color/adult_total), digits=1))
 
 metro_sex_by_age %>% select(year, pct_u18_color, pct_adult_color)%>%  knitr::kable("html") %>% 
   kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"), full_width = F, position="left")
@@ -242,10 +239,11 @@ metro_sex_by_age %>% select(year, pct_u18_color, pct_adult_color)%>%  knitr::kab
 ```{r, message=FALSE, warning=FALSE}
 
 
-overall <- dcast(diversity%>% select(year, name, variable, estimate), year+name ~ variable) %>% mutate(pct_color = round(((totpop-nh_whitealone)/totpop)*100,2))
+overall <- dcast(diversity%>% select(year, name, variable, estimate), year+name ~ variable) %>% mutate(pct_color = percent(((totpop-nh_whitealone)/totpop), digits=1))
 
-
-dcast(overall %>% select(year, name, pct_color), name ~year)%>%  knitr::kable("html") %>% 
+overall%>%
+  select(year, name, pct_color) %>% 
+  arrange(name, year) %>% knitr::kable("html") %>% 
   kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"), full_width = F, position="left")
 ```
 
@@ -255,7 +253,7 @@ dcast(overall %>% select(year, name, pct_color), name ~year)%>%  knitr::kable("h
 
 #need to add 2018 
 
-dcast(diversity %>% filter(name=='Minneapolis-St. Paul-Bloomington, MN-WI Metro Area', variable!='totpop', variable!='nothispanic')   %>% select(variable, year, estimate), variable ~ year)%>% clean_names() %>%   mutate(pct2012=round((`x2012`/sum(`x2012`)*100),1), pct2018 = round((`x2018`/sum(`x2018`)*100),1))%>% select(variable, pct2012, pct2018)%>%  knitr::kable("html") %>% 
+dcast(diversity %>% filter(name=='Minneapolis-St. Paul-Bloomington, MN-WI Metro Area', variable!='totpop', variable!='nothispanic')   %>% select(variable, year, estimate), variable ~ year)%>% clean_names() %>%   mutate(pct2012=percent(`x2012`/sum(`x2012`), digits=1), pct2018 = percent(`x2018`/sum(`x2018`),digits=1))%>% select(variable, pct2012, pct2018)%>%  knitr::kable("html") %>% 
   kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"), full_width = F, position="left")
 ```
 

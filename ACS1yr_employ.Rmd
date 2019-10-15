@@ -1,7 +1,7 @@
 ---
 title: "ACS1yr_employ"
 author: "MaryJoWebster"
-date: "September 24, 2019"
+date:  "Last updated: `r Sys.Date()`"
 output: html_document
 ---
 
@@ -151,15 +151,17 @@ pivot_wider(employ_biggroups, names_from = status, values_from = est) %>% clean_
 pivot_wider(employ_biggroups, names_from = status, values_from = est) %>% clean_names() %>% mutate(pct = (in_labor_force/total)*100) %>% filter(big_age_group=='Young workers')
 ```
 
-
+#In labor force- MN vs US
 ```{r}
 pivot_wider(yr_status, names_from = status, values_from = est) %>% clean_names() %>% mutate(pct = (in_labor_force/total)*100)
 ```
 
+#Parenthood age women in labor force
 ```{r}
 pivot_wider(women, names_from = status, values_from = est) %>% clean_names() %>% mutate(pct = (in_labor_force/total)*100) %>% filter(big_age_group=='Parent age')
 ```
 
+#Women age 30 to 34
 ```{r}
 women_smallgroups <-  employ %>% filter(gender!='Total', agegroup!='Total', gender=='Female') %>% group_by(year, gender, agegroup, status) %>% summarise(est=sum(estimate))
 
@@ -168,17 +170,17 @@ pivot_wider(women_smallgroups, names_from = status, values_from = est) %>% clean
 
 
 ```
+
+#Women age 35 to 44
 ```{r}
 pivot_wider(women_smallgroups, names_from = status, values_from = est) %>% clean_names() %>% mutate(pct = (in_labor_force/total)*100) %>% filter(agegroup=='35 to 44' ) %>% select(year, agegroup, pct)
 ```
+
+#More details - women age 30 to 34
 ```{r}
 employ_by_age %>% filter(grepl("30 to 34", label), grepl("Female", label)) %>% select(year, label,estimate, moe)
 
-write.csv(employ_by_age, 'employ_by_age.csv', row.names = FALSE)
+#write.csv(employ_by_age, './output/employ_by_age.csv', row.names = FALSE)
 ```
 
-
-```{r}
-
-```
 

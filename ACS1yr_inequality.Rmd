@@ -1,6 +1,6 @@
 ---
 title: "ACS1yr_inequality"
-author: "MaryJoWebster"
+author: "MaryJo Webster"
 date: "September 26, 2019"
 output: html_document
 ---
@@ -33,11 +33,13 @@ census_api_key(Sys.getenv("CENSUS_API_KEY"))
 #acs_variable_list <- load_variables(2017, "acs5", cache = TRUE)
 #write.csv(acs_variable_list, 'acs_variable_list_2017.csv', row.names = FALSE)
 
+#this pulls the gini index
 my_variables <- c(gini = "B19083_001")
 
 years <-  lst(2012, 2013, 2014, 2015, 2016, 2017, 2018)
 
 
+#data for all states
 state_gini <-  map_dfr(
   years,
   ~ get_acs(
@@ -49,7 +51,7 @@ state_gini <-  map_dfr(
   .id = "year"
   ) %>% clean_names() %>% mutate(level='states')
 
-
+#data for the US
 us_gini <-  map_dfr(
   years,
   ~ get_acs(

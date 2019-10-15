@@ -33,6 +33,7 @@ library(DT)
 library(kableExtra)
 library(aws.s3)
 library(htmltools)
+library(formattable)
 
 
 census_api_key(Sys.getenv("CENSUS_API_KEY"))
@@ -154,20 +155,34 @@ stlouis_costs <-  county_costs %>% filter(geoid =="27137")
 ```
 
 #7 county metro- Homeownership
+
 ```{r}
 
-metro_tenure_all <-  metro_tenure %>% filter(group=='all') %>% group_by(year,  metric) %>% summarize(est=sum(estimate))
+metro_tenure_x <- metro_tenure %>% group_by(year, name, group, metric) %>% summarise(est=comma(sum(estimate)))
 
-pivot_wider(metro_tenure_all, names_from = metric, values_from = est) %>% mutate(pctown = round((owner/`housing units`),3))%>%  knitr::kable("html") %>% 
+metro_tenure_x <-pivot_wider(metro_tenure_x, names_from=metric, values_from=est)
+
+
+metro_tenure_all <-  metro_tenure_x %>% group_by(group,  year) %>% summarize(owner = comma(sum(owner), digits=0), renters = comma(sum(renter), digits=0), housing=comma(sum(`housing units`),digits=0))%>% mutate(pctown = (owner/housing))
+
+
+  
+  
+metro_tenure_all %>% 
+  filter(group=='all') %>% 
+  knitr::kable("html") %>% 
   kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"), full_width = F, position="left")
+
 ```
+
+
 
 #Pct homeownership by county
 
 ```{r}
 metro_tenure_bycounty <-  metro_tenure %>% filter(group=='all') %>% select(name, year, metric, estimate)
 
-metro_tenure_bycounty <- pivot_wider(metro_tenure_bycounty, names_from = metric, values_from = estimate) %>% mutate(pctown = round((owner/`housing units`),3)) %>% select(year, name, pctown)%>%arrange(name, year) 
+metro_tenure_bycounty <- pivot_wider(metro_tenure_bycounty, names_from = metric, values_from = estimate) %>% mutate(pctown = percent((owner/`housing units`),digits=1)) %>% select(year, name, pctown)%>%arrange(name, year) 
 
 pivot_wider(metro_tenure_bycounty, names_from= year, values_from=pctown)%>%   knitr::kable("html") %>% 
   kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"), full_width = F, position="left")
@@ -179,20 +194,21 @@ pivot_wider(metro_tenure_bycounty, names_from= year, values_from=pctown)%>%   kn
 metro_tenure_color <-  metro_tenure %>% filter(group=='color') %>% group_by(year,  metric) %>% summarize(est=sum(estimate))
 
 
-metro_tenure_color <- pivot_wider(metro_tenure_color, names_from = metric, values_from = est) %>% mutate(pctown = round((owner/`housing units`),3)) %>% select(year, pctown)
+metro_tenure_color <- pivot_wider(metro_tenure_color, names_from = metric, values_from = est) %>% mutate(pctown = percent(owner/`housing units`),digits=1) %>% select(year, pctown)
 
 metro_tenure_color%>%   knitr::kable("html") %>% 
   kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"), full_width = F, position="left")
 ```
 #Homeownership for white, entire metro
 ```{r}
-metro_tenure_white<-  metro_tenure %>% filter(group=='white') %>% group_by(year,  metric) %>% summarize(est=sum(estimate))
+metro_tenure_white<-  metro_tenure %>% filter(group=='white') %>% group_by(year,  metric) %>% summarize(est=comma(sum(estimate)))
 
 
-metro_tenure_white <- pivot_wider(metro_tenure_white, names_from = metric, values_from = est) %>% mutate(pctown = round((owner/`housing units`),3)) %>% select(year, pctown)
+metro_tenure_white2 <- pivot_wider(metro_tenure_white, names_from = metric, values_from = est) %>% mutate(pctown = percent((owner/`housing units`),digits=1)) %>% select(year, pctown)
 
-metro_tenure_white%>%   knitr::kable("html") %>% 
+metro_tenure_white2%>%   knitr::kable("html") %>% 
   kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"), full_width = F, position="left")
+
 ```
 
 #Ownership people of color, by county
