@@ -43,9 +43,54 @@ my_variables <-  c(totpop = "B07001_001",
                             abroad = "B07001_081"
                             )
 
+#these are total populations of each age group (to use as denominator); labels are age groups
+mobility_age_variables_1 <-  c(
+                           g1_4  = "B07001_002",
+                            g5_17 = "B07001_003",
+                            g18_19 = "B07001_004",
+                            g20_24 = "B07001_005",
+                            g25_29 = "B07001_006",
+                           g30_34 = "B07001_007",
+                           g35_39 = "B07001_008",
+                           g40_44 = "B07001_009",
+                           g45_49 = "B07001_010",
+                           g50_54 = "B07001_011",
+                           g55_59 = "B07001_012",
+                           g60_64 = "B07001_013",
+                           g65_69 = "B07001_014",
+                           g70_74 = "B07001_015",
+                           g75up = "B07001_016"
+
+                            )
+
+#these are the number of people living in the same house; labels are age groups
+mobility_age_variables_2 <-  c(g1_4 = "B07001_018",
+                           g5_17 = "B07001_019",
+                           g18_19 = "B07001_020",
+                           g20_24 = "B07001_021",
+                           g25_29 = "B07001_022",
+                           g30_34 = "B07001_023",
+                           g35_39 = "B07001_024",
+                           g40_44 = "B07001_025",
+                           g45_49 = "B07001_026",
+                           g50_54 = "B07001_027",
+                           g55_59 = "B07001_028",
+                           g60_64 = "B07001_029",
+                           g65_69 = "B07001_030",
+                           g70_74 = "B07001_031",
+                           g75up = "B07001_032")
+
+mobility_tenure_variables <-  c(total = "B07013_001",
+                                owner_total = "B07013_002",
+                                renter_total = "B07013_003",
+                                samehouse_total = "B07013_004",
+                                owner_same = "B07013_005",
+                                renter_same = "B07013_006")
+
 #pull data for these years
 years <-  lst(2012, 2013, 2014, 2015, 2016, 2017, 2018)
 
+year_1 <-  lst(2018)
 
 #pull data for state of MN
 mobility_state <-  map_dfr(
@@ -62,11 +107,52 @@ mobility_state <-  map_dfr(
 
 
 #pull data for all metro areas in the US
+#overall mobility
 mobility_metro<-  map_dfr(
   years,
   ~ get_acs(
     geography = "metropolitan statistical area/micropolitan statistical area",
     variables = my_variables,
+    year = .x,
+    survey = "acs1"
+    ),
+  .id = "year"
+  )%>% clean_names()
+
+#mobility by age
+mobility_metro_age_totals <-  map_dfr(
+  years,
+  ~ get_acs(
+    geography = "metropolitan statistical area/micropolitan statistical area",
+    variables = mobility_age_variables_1,
+    year = .x,
+    survey = "acs1"
+    ),
+  .id = "year"
+  )%>%
+  clean_names() %>% 
+  filter(geoid=='33460')
+
+
+mobility_metro_age_samehouse <-  map_dfr(
+  years,
+  ~ get_acs(
+    geography = "metropolitan statistical area/micropolitan statistical area",
+    variables = mobility_age_variables_2,
+    year = .x,
+    survey = "acs1"
+    ),
+  .id = "year"
+  )%>%
+  clean_names() %>% 
+  filter(geoid=='33460')
+
+#mobility by tenure
+mobility_metro_tenure <-  map_dfr(
+  years,
+  ~ get_acs(
+    geography = "metropolitan statistical area/micropolitan statistical area",
+    variables = mobility_tenure_variables,
     year = .x,
     survey = "acs1"
     ),
@@ -83,7 +169,9 @@ mobility <-  bind_rows(mobility_state, mobility_metro %>% filter(geoid=='33460')
 mobility_wide <-  mobility %>% filter(name=='Minnesota') %>%  select(year, variable, estimate, -name, -geoid, -moe)
 
 
-
+#this is mobility by tenure (owner or renter), filtered down to just the MSP metro
+mobility_metro_tenure_mn <-  mobility_metro_tenure %>%  filter(geoid=='33460')
+write.csv(mobility_metro_tenure_mn, './output/mobilit_metro_tenure_mn.csv', row.names=FALSE)
 ```
 
 #State of Minnesota, mobility rates
@@ -115,13 +203,14 @@ pivot_wider(mobility %>% filter(geoid=='27') %>% select(year, name, variable, es
   select(year, pctdiffstate, pctabroad, pctdiffcounty, pctsamecounty, pctsamehouse)
 
 
- pivot_wider(mobility %>% filter(geoid=='33460') %>% select(year, name, variable, estimate), names_from = variable, values_from=estimate)
+twincities <-  pivot_wider(mobility %>% filter(geoid=='33460') %>% select(year, name, variable, estimate), names_from = variable, values_from=estimate)
 
+write.csv(twincities, './output/twincities_mobility.csv', row.names=FALSE)
 ```
 
 #Compare metros
 ```{r}
-metros_mobility <-  pivot_wider(mobility_metro %>% filter(grepl("Metro Area", name), estimate!='NA', year=='2017')%>% select(year, name, variable, estimate), names_from = variable, values_from=estimate)%>% mutate(pctdiffstate = round((diffstate/totpop)*100,1),
+metros_mobility <-  pivot_wider(mobility_metro %>% filter(grepl("Metro Area", name), estimate!='NA', year=='2018')%>% select(year, name, variable, estimate), names_from = variable, values_from=estimate)%>% mutate(pctdiffstate = round((diffstate/totpop)*100,1),
        pctabroad = round((abroad/totpop)*100,1),
        pctdiffcounty = round((diffcounty/totpop)*100,1),
        pctsamecounty = round((samecounty/totpop)*100,1),
@@ -130,5 +219,39 @@ metros_mobility <-  pivot_wider(mobility_metro %>% filter(grepl("Metro Area", na
   arrange(desc(pctdiffstate))
 
 datatable(metros_mobility)
+write.csv(metros_mobility, './output/metros_mobility_2018.csv', row.names = FALSE)
+```
+
+
+```{r}
+#mobility by age group in the Twin Cities
+  
+
+age_twincities <-  inner_join(mobility_metro_age_totals %>% select(year, variable, estimate), mobility_metro_age_samehouse %>% select(year, variable, estimate), by=c("variable"="variable", "year"="year")) %>% rename(pop=estimate.x, samehouse = estimate.y) %>% 
+  mutate(pctsamehouse = samehouse/pop)
+
+
+age_twincities <-  age_twincities %>% mutate(group = case_when(variable== 'g1_4'~'kids',
+          variable == 'g5_17'~'kids',
+          variable == 'g18_19'~'college',
+          variable == 'g20_24'~'college',
+          variable == 'g25_29'~'young workers',
+          variable =='g30_34'~'family-age',
+          variable =='g35_39'~'family-age',
+          variable=='g40_44'~'family-age',
+          variable == 'g45_49'~'family-age',
+          variable=='g50_54'~'family-age',
+          variable=='g55_59'~'empty nesters',
+          variable == 'g60_64'~'empty nesters',
+          variable == 'g65_69'~'empty nesters',
+          variable == 'g70_74'~'elderly',
+          variable == 'g75up'~'elderly'))
+
+age_biggroups <- age_twincities %>% group_by(year, group) %>% summarise(totpop=sum(pop),
+                                                                        tot_samehouse = sum(samehouse)) %>% 
+  mutate(pctsamehouse = tot_samehouse/totpop)
+
+
+write.csv(age_biggroups, './output/age_mobility.csv', row.names=FALSE)
 ```
 

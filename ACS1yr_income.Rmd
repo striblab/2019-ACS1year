@@ -129,8 +129,13 @@ income <- bind_rows(county_income, state_income, us_income, metro_income)
 
 
 
-
-
+#this pulls median houshold income for places in Minnesota
+   hhincome_2017 <- get_acs(geography = "place", 
+                     year=2017,
+                     survey="acs5",
+                     state="MN",
+              variables = c(medincome ="B19013_001"))
+#write.csv(hhincome_2017, 'hhincome_places_2017.csv', row.names=FALSE)
 ```
 
 
